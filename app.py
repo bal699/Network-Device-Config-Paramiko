@@ -1,105 +1,96 @@
 # -*- coding: utf-8 -*-
 
-import paramiko
+from flask import Flask
+from flask import request
 
-import time
+from network_class import NetworkSSH
 
-############################################
-# Configuration
-############################################
 
-hostname = u'<device-id>'
-username = u'<device-user-name>'
-password = u'<device-password>'
+app = Flask(__name__)
 
-############################################
-# Functions
-############################################
+content = '''
 
-def log(message):
-    print('>> {}...'.format(message))
+    <html>
+    <head>
+        <title>Network SHH</title>
+    </head>
+    <body>
 
-def run_command(commands):
+        <h1>Network Routers Configuration via SSH</h1>
+        <hr />
 
-    if not isinstance(commands, list):
-        commands = [commands]
+        <form method="POST" action="/configure">
 
-    for command in commands:
-        remote_conn.send('{}\n'.format(command))                                         # Wrap the command you want to send in quotes
-        time.sleep(2)                                                                    # Wait for device to return the output of the CLI
-        output = remote_conn.recv(1000)                                                  # Save 1000 bytes of the returned output to variable output
-        print('>> ' + output.decode("utf-8", errors='replace').replace('', ''))         # Print the variable output
+            <div>
+                <div>
+                    <label for="routers">Selecione um roteador:</label>
+                    <br />
+                    <select name="routers" id="routers" multiple>
+                        <option value="1">Router 1</option>
+                        <option value="2">Router 2</option>
+                        <option value="3">Router 3</option>
+                        <option value="4">Router 4</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="vlans">Selecione uma VLAN:</label>
+                    <br />
+                    <select name="vlans" id="vlans" multiple>
+                        <option value="90">VLAN 90</option>
+                        <option value="91">VLAN 91</option>
+                        <option value="92">VLAN 92</option>
+                        <option value="93">VLAN 93</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="ports">Selecione as portas:</label>
+                    <br />
+                    <select name="ports" id="ports" multiple>
+                        <option value="0">Porta 0</option>
+                        <option value="1">Porta 1</option>
+                        <option value="2">Porta 2</option>
+                        <option value="3">Porta 3</option>
+                    </select>
+                </div>
+            </div>
 
-############################################
-# Logic
-############################################
+            <button type="submit">Configurar Agora >></button>
 
-# Connect to switch and build ssh connection
-remote_conn_pre = paramiko.SSHClient()
-remote_conn_pre.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-remote_conn_pre.connect(
-    hostname=hostname,
-    username=username,
-    password=password,
-    look_for_keys=False,
-    allow_agent=False
-)
+        </form>
 
-log('SSH connection established to ' + hostname)
-remote_conn = remote_conn_pre.invoke_shell()
-log('Interactive SSH session established')
+        <label for="message">Mensagem: @message</label>
 
-# Print terminal to screen
-run_command('')
+    </body>
+    </html>
 
-# Username root requires getting into the cli
-if username == 'root':
-    run_command('cli')
+'''
 
-# Show routes
-run_command('show route')
 
-# Set configuration on devices
+# página principal
+@app.route('/')
+def index():
+    return content 
 
-devices = [
-    {
-        'id': 1,
-        'name': 'Torre Natal',
-        'vlan': 90,
-        'ports': [0, 1]
-    },
-    {
-        'id': 2,
-        'name': 'Torre Guarabira',
-        'vlan': 91,
-        'ports': [2, 3]
-    },
-    {
-        'id': 3,
-        'vlan': 92,
-        'name': 'Torre Rio de Janeiro',
-        'ports': [4, 5]
-    },
-]
 
-# para cada device selecionado
-for device in devices:
+# página/rota de configuração principal
+@app.route('/configure', methods = ['POST'])
+def configure():
 
-    log('Ajustando confogiração do device: {}'.format(device.get('name')))
+    routers = request.form.getlist('routers')
+    vlans = request.form.getlist('vlans')
+    ports = request.form.getlist('ports')
 
-    vlan = device.get('vlan')
-    ports = device.get('ports')
+    try:
+        for router in routers:
+            for vlan in vlans:
+                network = NetworkSSH()
+                network.connect()
+                network.configure(router, vlan, ports)
+    except Exception as e:
+        return content.replace('@message', str(e))
 
-    commands = [
-        'configure',
-        'set vlans vlan{vlan} vlan-id {vlan}'.format(vlan=vlan),
-        'set interfaces ge-0/0/{port} unit 0 family ethernet-switching port-mode trunk'.format(port=ports[0]),
-        'set interfaces ge-0/0/{port} unit 0 family ethernet-switching vlan members vlan{vlan}'.format(vlan=vlan, port=ports[0]),
-        'set interfaces ge-0/0/{port} unit 0 family ethernet-switching port-mode trunk'.format(port=ports[1]),
-        'set interfaces ge-0/0/{port} unit 0 family ethernet-switching vlan members vlan{vlan}'.format(vlan=vlan, port=ports[1]),
-        'commit',
-    ]
-    run_command(commands)
+    return content.replace('@message', 'Configuração aplicadacom sucesso!')
 
-    # show configuregion
-    run_command('run show vlans | find vlan{vlan}'.format(vlan=vlan, port=ports[0]))
+# run server
+if __name__ == '__main__':
+    app.run(debug=True)

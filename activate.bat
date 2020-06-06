@@ -1,0 +1,1 @@
+C:\Python\38\venvs\network_ssh\Scripts\activate.bat
